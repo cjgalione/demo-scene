@@ -1,0 +1,103 @@
+Wait for Connect
+----------------
+bash -c ' \
+echo -e "\n\n=============\nWaiting for Kafka Connect to start listening on localhost ⏳\n=============\n"
+while [ $(curl -s -o /dev/null -w %{http_code} http://localhost:8083/connectors) -ne 200 ] ; do
+  echo -e "\t" $(date) " Kafka Connect listener HTTP state: " $(curl -s -o /dev/null -w %{http_code} http://localhost:8083/connectors) " (waiting for 200)"
+  sleep 5
+done
+echo -e $(date) "\n\n--------------\n\o/ Kafka Connect is ready! Listener HTTP state: " $(curl -s -o /dev/null -w %{http_code} http://localhost:8083/connectors) "\n--------------\n"
+'
+
+Create topics in CC -> transactions, ws-sysA, ws-sysB (or whatever is being used below)
+
+
+Topic 1 & 2 data generation
+-----------------------
+
+curl -i -X PUT -H  "Content-Type:application/json" \
+    http://localhost:8083/connectors/source-voluble-datagen-00/config \
+    -d '{
+        "connector.class"                 : "io.mdrogalis.voluble.VolubleSourceConnector",
+        "genkp.ws-sysA.with"          : "#{Internet.uuid}",
+        "genv.ws-sysA.amount.with"    : "#{Commerce.price}",
+        "genv.ws-sysA.units.with"     : "#{number.number_between '\''1'\'','\''99'\''}",
+        "genv.ws-sysA.txn_date.with"  : "#{date.past '\''10'\'','\''DAYS'\''}",
+        "genv.ws-sysA.product.with"   : "#{Beer.name}",
+        "genv.ws-sysA.source.with"    : "sysA",
+        "topic.ws-sysA.throttle.ms"   : 1000,
+        "genkp.ws-sysB.with"        : "#{Internet.uuid}",
+        "genv.ws-sysB.cost.with"    : "#{Commerce.price}",
+        "genv.ws-sysB.units.with"   : "#{number.number_between '\''1'\'','\''99'\''}",
+        "genv.ws-sysB.txn_date.with": "#{date.past '\''10'\'','\''DAYS'\''}",
+        "genv.ws-sysB.item.with"    : "#{Beer.name}",
+        "genv.ws-sysB.source.with"  : "sysB",
+        "topic.ws-sysB.throttle.ms" : 1000
+    }'
+
+
+Look at Topic w/ docker kafkacat
+--------------------------------
+docker exec kafkacat kafkacat -b ${CCLOUD_BOOTSTRAP_SERVER} \
+    -L -X security.protocol=SASL_SSL -X sasl.mechanisms=PLAIN \
+    -X sasl.username=${CCLOUD_API_KEY} -X sasl.password=${CCLOUD_API_SECRET} -X api.version.request=true \
+    -r https://${SCHEMA_REGISTRY_BASIC_AUTH_USER_INFO}@psrc-j55zm.us-central1.gcp.confluent.cloud -s key=s -s value=avro \
+    -C -c1 -o-1 -u -q -J -t ws-sysA | \  
+    jq '.payload.Gen0'
+
+
+Look at Topic w/ local kafkcat
+------------------------------
+kafkacat -b ${CCLOUD_BOOTSTRAP_SERVER} \
+    -L -X security.protocol=SASL_SSL -X sasl.mechanisms=PLAIN \
+    -X sasl.username=${CCLOUD_API_KEY} -X sasl.password=${CCLOUD_API_SECRET} -X api.version.request=true \
+    -r https://${SCHEMA_REGISTRY_BASIC_AUTH_USER_INFO}@psrc-j55zm.us-central1.gcp.confluent.cloud -s key=s -s value=avro \
+    -C -c1 -o-1 -u -q -t ws-sysA | \
+    python -m json.tool
+
+
+Transform Topics 1 & 2
+----------------------
+curl -i -X PUT -H "Accept:application/json" \
+  -H  "Content-Type:application/json" http://localhost:8083/connectors/sink-jdbc-mysql-00/config \
+  -d '{
+      "connector.class"                         : "io.confluent.connect.jdbc.JdbcSinkConnector",
+      "connection.url"                          : "jdbc:mysql://mysql:3306/demo",
+      "connection.user"                         : "mysqluser",
+      "connection.password"                     : "mysqlpw",
+      "topics.regex"                            : "ws-.*",
+      "tasks.max"                               : "4",
+      "auto.create"                             : "true",
+      "auto.evolve"                             : "true",
+
+      "transforms"                              : "renameSystemBFields,renameTargetTopic",
+      "transforms.renameSystemBFields.type"     : "org.apache.kafka.connect.transforms.ReplaceField$Value",
+      "transforms.renameSystemBFields.renames"  : "item:product,cost:amount",
+      "transforms.renameSystemBFields.predicate": "isSystemBTopic",
+
+      "transforms.renameTargetTopic.type"       : "org.apache.kafka.connect.transforms.RegexRouter",
+      "transforms.renameTargetTopic.regex"      : "ws-.*",
+      "transforms.renameTargetTopic.replacement": "transactions",
+
+      "predicates"                              : "isSystemBTopic",
+      "predicates.isSystemBTopic.type"          : "org.apache.kafka.connect.transforms.predicates.TopicNameMatches",
+      "predicates.isSystemBTopic.pattern"       : ".*-sysB"
+      }'
+
+
+Predicates that ship with Kafka:
+TopicNameMatches: Matches records in a topic with a name matching a particular Java regular expression.
+HasHeaderKey: Matches records which have a header with the given key.
+RecordIsTombstone: Matches tombstone records (that is, records with a null value).
+
+Show database
+-------------
+docker exec -it mysql bash -c 'mysql -u root -p$MYSQL_ROOT_PASSWORD demo'
+show tables;
+describe transactions;
+select * from transactions ... ;
+
+
+Finally, confirm connector topics
+---------------------------------
+curl -s -XGET "http://localhost:8083/connectors/sink-jdbc-mysql-00/topics" | jq '.' 

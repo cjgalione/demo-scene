@@ -113,7 +113,7 @@ services:
   mysql:
     # *-----------------------------*
     # To connect to the DB:
-    #   docker exec -it mysql bash -c 'mysql -u root -p $MYSQL_ROOT_PASSWORD demo'
+    #   docker exec -it mysql bash -c 'mysql -u root -p$MYSQL_ROOT_PASSWORD demo'
     # *-----------------------------*
     image: mysql:8.0
     container_name: mysql
@@ -127,15 +127,12 @@ services:
      - ${PWD}/00_setup_db.sql:/docker-entrypoint-initdb.d/00_setup_db.sql
     #  - ${PWD}/data:/data
 
-       # kafkacat:
-       #   image: edenhill/kafkacat:1.6.0
-       #   container_name: kafkacat
-       #   links:
-       #     - broker
-       #     - schema-registry
-       #   entrypoint: 
-       #     - /bin/sh 
-       #     - -c 
-       #     - |
-       #       apk add jq; 
-       #       while [ 1 -eq 1 ];do sleep 60;done
+  kafkacat:
+    image: edenhill/kafkacat:1.6.0
+    container_name: kafkacat
+    entrypoint: 
+      - /bin/sh 
+      - -c 
+      - |
+        apk add jq; 
+        while [ 1 -eq 1 ];do sleep 60;done

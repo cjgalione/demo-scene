@@ -1,6 +1,6 @@
 export BOOTSTRAP_SERVERS="pkc-4yyd6.us-east1.gcp.confluent.cloud:9092"
-export CLOUD_KEY="KZQEZ5S6ERBNRR2A"
-export CLOUD_SECRET="OpTozi3imKboTfshA0snWACtNa6XbpLnETINJ9v3rutcG6FXX/UPpm0fOBFIfMo0"
+export CLOUD_KEY="FPAZXF4BGKL2KA2N"
+export CLOUD_SECRET="Tcop8h2DuzRM5YDE+KV/gFu79gEjIRzFOOOy1bQKvGFuc8B90lroDREuS8n8qqGT"
 export SCHEMA_REGISTRY_KEY="2JRZMS35MOKYVRQR"
 export SCHEMA_REGISTRY_SECRET="Mbr7bkPSNAXTX1o4Gvm2eQijejGgPs+6vbSP4JvbosdHoH9VTcpOX5S94gNC/Cvd"
 export SCHEMA_REGISTRY_URL="https://psrc-j55zm.us-central1.gcp.confluent.cloud"
